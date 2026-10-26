@@ -18,3 +18,9 @@ Each entry: context, options, choice, why.
 - **Context:** Later scope: verified callers can ask about their last visit and reason.
 - **Choice:** Backend rejects record tools unless the call has a verified patient; fixed field allowlist; every access logged in `tool_calls`; ledger checks claims against the DB.
 - **Why:** The LLM must never be the access-control layer; grounding claims in the DB prevents hallucinated facts.
+
+## 4. Phone numbers: deterministic TTS transform, not a prompt instruction
+- **Context:** Kokoro read "555-212-1345" as a quantity ("one thousand three hundred...").
+- **Options:** tell the LLM to write digits separately; use Pipecat's `expand_phone_numbers` TTS text transform.
+- **Choice:** the transform, wrapped to normalize Unicode hyphens first.
+- **Why:** the LLM emitted U+2011 non-breaking hyphens, which Pipecat's regex doesn't match. Deterministic code beats a prompt the model can ignore. Limit: only 10-digit US numbers.
