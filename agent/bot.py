@@ -39,6 +39,8 @@ from pipecat.turns.user_turn_strategies import (
 from pipecat.utils.text.transforms import expand_phone_numbers
 from pipecat.workers.runner import WorkerRunner
 
+from metrics.timing_observer import TimingObserver
+
 load_dotenv(override=True)
 
 TURN_MODE = os.getenv("TURN_MODE", "smart_turn")
@@ -111,7 +113,9 @@ async def bot(runner_args: RunnerArguments):
         ]
     )
     worker = PipelineWorker(
-        pipeline, params=PipelineParams(enable_metrics=True, enable_usage_metrics=True)
+        pipeline,
+        params=PipelineParams(enable_metrics=True, enable_usage_metrics=True),
+        observers=[TimingObserver()],
     )
 
     @assistant_aggregator.event_handler("on_assistant_turn_stopped")
