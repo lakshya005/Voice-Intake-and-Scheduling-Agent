@@ -9,6 +9,7 @@ import os
 import re
 
 from dotenv import load_dotenv
+from loguru import logger
 from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnalyzerV3
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.frames.frames import LLMRunFrame
@@ -47,9 +48,11 @@ SYSTEM_PROMPT = (
 )
 
 
-async def speak_phone_numbers(text: str, text_type: str) -> str:
+async def speak_naturally(text: str, text_type: str) -> str:
     # The LLM often emits U+2011 (non-breaking hyphen), which Pipecat's phone regex doesn't match.
     text = re.sub("[‐-―−]", "-", text)
+    # Kokoro pauses at every period in "p.m."; "PM" is spoken as one unit.
+    text = re.sub(r"\b([AaPp])\.\s?[Mm]\.", lambda m: m.group(1).upper() + "M", text)
     return await expand_phone_numbers(text, text_type)
 
 
@@ -67,7 +70,7 @@ async def bot(runner_args: RunnerArguments):
     )
     tts = KokoroTTSService(
         settings=KokoroTTSService.Settings(voice="af_heart"),
-        text_transforms=[("*", speak_phone_numbers)],
+        text_transforms=[("*", speak_naturally)],
     )
     context = LLMContext()
 
@@ -110,6 +113,13 @@ async def bot(runner_args: RunnerArguments):
     worker = PipelineWorker(
         pipeline, params=PipelineParams(enable_metrics=True, enable_usage_metrics=True)
     )
+
+    @assistant_aggregator.event_handler("on_assistant_turn_stopped")
+    async def log_assistant_turn(aggregator, message):
+        # What the context stores for this turn; when interrupted it should be only what was spoken.
+        logger.info(
+            f"ASSISTANT TURN interrupted={message.interrupted} content={message.content!r}"
+        )
 
     @transport.event_handler("on_client_connected")
     async def on_connected(transport, client):

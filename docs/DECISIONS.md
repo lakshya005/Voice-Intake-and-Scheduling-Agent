@@ -24,3 +24,9 @@ Each entry: context, options, choice, why.
 - **Options:** tell the LLM to write digits separately; use Pipecat's `expand_phone_numbers` TTS text transform.
 - **Choice:** the transform, wrapped to normalize Unicode hyphens first.
 - **Why:** the LLM emitted U+2011 non-breaking hyphens, which Pipecat's regex doesn't match. Deterministic code beats a prompt the model can ignore. Limit: only 10-digit US numbers.
+
+## 5. Turn detection: Silero + Smart Turn vs Deepgram Flux (provisional)
+- **Context:** M1 needs end-of-turn detection that doesn't cut callers off.
+- **Options:** (A) Silero VAD + Smart Turn v3 with Deepgram Nova STT, all turn logic local; (B) Deepgram Flux, one cloud model for STT and end-of-turn.
+- **Observed (by ear, one speaker, quiet room, not measured in ms):** both gave ~1-1.5 s to first word and no cut-offs during a 15-20 s ramble; both handled digits read slowly. Flux's mid-sentence-pause and barge-in tests not yet run.
+- **Choice:** none yet. `TURN_MODE` env var switches between them. Revisit with timing-observer numbers.
