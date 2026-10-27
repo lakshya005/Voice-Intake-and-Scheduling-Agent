@@ -30,3 +30,9 @@ Each entry: context, options, choice, why.
 - **Options:** (A) Silero VAD + Smart Turn v3 with Deepgram Nova STT, all turn logic local; (B) Deepgram Flux, one cloud model for STT and end-of-turn.
 - **Observed (by ear, one speaker, quiet room, not measured in ms):** both gave ~1-1.5 s to first word and no cut-offs during a 15-20 s ramble; both handled digits read slowly. Flux's mid-sentence-pause and barge-in tests not yet run.
 - **Choice:** none yet. `TURN_MODE` env var switches between them. Revisit with timing-observer numbers.
+
+## 6. Barge-in context truncation is sentence-granular with Kokoro
+- **Context:** Interrupting the agent mid-answer. Goal: context keeps only what the caller heard.
+- **Observed:** three interrupted turns stored `content=''`. Kokoro gives no word timestamps, so Pipecat adds a sentence to the context only after its audio finishes generating (documented in `TTSService._push_spoken_text`). A sentence interrupted midway is dropped entirely.
+- **Consequence:** safe direction (never stores unheard words) but lossy: the agent forgot its own partial answer and repeated it. Mitigation: short sentences in the prompt. A TTS with word timestamps would give word-level truncation.
+- **Also observed:** Flux transcribed "wait, stop" as "which top", "weird stop", "weed stop"; the junk then triggered new replies.
