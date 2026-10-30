@@ -7,12 +7,15 @@ TURN_MODE=flux: Deepgram Flux decides end of turn itself
 
 import os
 import re
+from datetime import datetime
+from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv
 from loguru import logger
 from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnalyzerV3
 from pipecat.audio.vad.silero import SileroVADAnalyzer
-from pipecat.frames.frames import LLMRunFrame
+from pipecat.flows import Flow, FlowConfig, FlowManager
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.worker import PipelineParams, PipelineWorker
 from pipecat.processors.aggregators.llm_context import LLMContext
@@ -39,16 +42,13 @@ from pipecat.turns.user_turn_strategies import (
 from pipecat.utils.text.transforms import expand_phone_numbers
 from pipecat.workers.runner import WorkerRunner
 
+import flow_tools
 from backend_client import BackendClient
 from metrics.timing_observer import TimingObserver, TurnTimes
 
 load_dotenv(override=True)
 
 TURN_MODE = os.getenv("TURN_MODE", "smart_turn")
-SYSTEM_PROMPT = (
-    "You are a friendly receptionist for a medical office. Keep every reply to one or two short sentences: "
-    "your words are spoken aloud. Do not give medical advice."
-)
 
 
 async def speak_naturally(text: str, text_type: str) -> str:
@@ -67,10 +67,7 @@ transport_params = {
 async def bot(runner_args: RunnerArguments):
     transport = await create_transport(runner_args, transport_params)
 
-    llm = GroqLLMService(
-        api_key=os.environ["GROQ_API_KEY"],
-        settings=GroqLLMService.Settings(system_instruction=SYSTEM_PROMPT),
-    )
+    llm = GroqLLMService(api_key=os.environ["GROQ_API_KEY"])
     tts = KokoroTTSService(
         settings=KokoroTTSService.Settings(voice="af_heart"),
         text_transforms=[("*", speak_naturally)],
@@ -98,9 +95,8 @@ async def bot(runner_args: RunnerArguments):
                 ],
             ),
         )
-    user_aggregator, assistant_aggregator = LLMContextAggregatorPair(
-        context, user_params=user_params
-    )
+    context_aggregator = LLMContextAggregatorPair(context, user_params=user_params)
+    user_aggregator, assistant_aggregator = context_aggregator
 
     pipeline = Pipeline(
         [
@@ -147,6 +143,17 @@ async def bot(runner_args: RunnerArguments):
         observers=[TimingObserver(on_turn=upload_turn)],
     )
 
+    flow = Flow(
+        FlowConfig.from_file(Path(__file__).with_name("flow.yaml")), handlers=flow_tools
+    )
+    flow_manager = FlowManager(
+        worker=worker,
+        llm=llm,
+        context_aggregator=context_aggregator,
+        transport=transport,
+        global_functions=flow.global_functions,
+    )
+
     @assistant_aggregator.event_handler("on_assistant_turn_stopped")
     async def log_assistant_turn(aggregator, message):
         # What the context stores for this turn; when interrupted it should be only what was spoken.
@@ -157,13 +164,12 @@ async def bot(runner_args: RunnerArguments):
     @transport.event_handler("on_client_connected")
     async def on_connected(transport, client):
         call["id"] = await backend.start_call()
-        context.add_message(
-            {
-                "role": "developer",
-                "content": "Greet the caller and ask how you can help.",
-            }
+        flow_manager.state.update(
+            backend=backend,
+            call_id=call["id"],
+            today=datetime.now(ZoneInfo("America/New_York")).strftime("%A, %B %-d, %Y"),
         )
-        await worker.queue_frames([LLMRunFrame()])
+        await flow_manager.initialize(flow.initial_node)
 
     @transport.event_handler("on_client_disconnected")
     async def on_disconnected(transport, client):

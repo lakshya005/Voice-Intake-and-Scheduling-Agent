@@ -33,6 +33,28 @@ class BackendClient:
         except httpx.HTTPError as e:
             logger.warning(f"backend end_call failed: {e}")
 
+    async def tool(self, name: str, **payload) -> dict:
+        """Call a backend tool. Retries once on a timeout or 5xx; never raises.
+
+        A rejection comes back as {"error": detail, "http_status": code}, an outage as {"error": "unavailable"}.
+        """
+        for _ in range(2):
+            try:
+                r = await self._http.post(f"/tools/{name}", json=payload)
+            except httpx.TransportError as e:
+                logger.warning(f"tool {name} transport error: {e!r}")
+                continue
+            if r.status_code >= 500:
+                logger.warning(f"tool {name} returned {r.status_code}")
+                continue
+            if r.is_success:
+                return r.json()
+            return {
+                "error": r.json().get("detail", "rejected"),
+                "http_status": r.status_code,
+            }
+        return {"error": "unavailable"}
+
     async def add_turn(self, call_id: int | None, payload: dict):
         if call_id is None:
             return

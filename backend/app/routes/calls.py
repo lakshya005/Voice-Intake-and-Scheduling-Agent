@@ -38,7 +38,7 @@ async def create_call(body: CallCreate, conn=Depends(get_conn)):
 @router.patch("/{call_id}")
 async def end_call(call_id: int, body: CallEnd, conn=Depends(get_conn)):
     cur = await conn.execute(
-        "UPDATE calls SET ended_at = now(), outcome = %s WHERE id = %s RETURNING id", (body.outcome, call_id)
+        "UPDATE calls SET ended_at = now(), outcome = COALESCE(%s, outcome) WHERE id = %s RETURNING id", (body.outcome, call_id)
     )
     if await cur.fetchone() is None:
         raise HTTPException(404, "call not found")
