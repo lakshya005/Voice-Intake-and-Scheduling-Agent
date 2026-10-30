@@ -5,7 +5,11 @@ when the bot stops speaking or the caller interrupts it. Voice-to-voice latency 
 t_tts_first_byte - t_user_stop. The greeting has no user turn, so it is not measured.
 """
 
+import asyncio
+import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 from loguru import logger
 from pipecat.frames.frames import (
@@ -33,14 +37,38 @@ def _ms(t: int | None, start: int) -> str:
 
 
 class TimingObserver(BaseObserver):
-    def __init__(self):
+    def __init__(
+        self,
+        on_turn: Callable[["TimingObserver", TurnTimes], Awaitable[None]] | None = None,
+    ):
         # Each processor re-pushes a frame; observing only the first push counts every frame once.
         super().__init__(observe_every_push=False)
         self._current = TurnTimes()
         self.completed: list[TurnTimes] = []
+        self._on_turn = on_turn
+        self._tasks: set[asyncio.Task] = set()
+        self._anchor: tuple[int, int] | None = (
+            None  # (pipeline ns, wall-clock ns) at the first frame seen
+        )
+
+    def wall_clock(self, t: int | None) -> datetime | None:
+        """Pipeline-clock ns to wall-clock time. Absolute error is the anchor's; differences stay exact."""
+        if t is None or self._anchor is None:
+            return None
+        return datetime.fromtimestamp(
+            (self._anchor[1] + t - self._anchor[0]) / 1e9, tz=UTC
+        )
 
     async def on_push_frame(self, data: FramePushed):
         frame, t, cur = data.frame, data.timestamp, self._current
+        if self._anchor is None:
+            self._anchor = (t, time.time_ns())
+        if (
+            "Transcri" in type(frame).__name__
+        ):  # TEMP: find out why stt_final stays empty
+            logger.debug(
+                f"SEEN {type(frame).__name__} t={t} user_stop={cur.t_user_stop} llm={cur.t_llm_first_token}"
+            )
 
         if isinstance(frame, UserStoppedSpeakingFrame):
             if (
@@ -71,6 +99,10 @@ class TimingObserver(BaseObserver):
         cur = self._current
         self._current = TurnTimes()
         self.completed.append(cur)
+        if self._on_turn:  # fire and forget: uploading must not delay the pipeline
+            task = asyncio.create_task(self._on_turn(self, cur))
+            self._tasks.add(task)
+            task.add_done_callback(self._tasks.discard)
         s = cur.t_user_stop
         logger.info(
             f"TURN TIMING stt_final={_ms(cur.t_stt_final, s)} llm_first_token={_ms(cur.t_llm_first_token, s)} "

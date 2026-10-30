@@ -39,7 +39,8 @@ from pipecat.turns.user_turn_strategies import (
 from pipecat.utils.text.transforms import expand_phone_numbers
 from pipecat.workers.runner import WorkerRunner
 
-from metrics.timing_observer import TimingObserver
+from backend_client import BackendClient
+from metrics.timing_observer import TimingObserver, TurnTimes
 
 load_dotenv(override=True)
 
@@ -112,10 +113,38 @@ async def bot(runner_args: RunnerArguments):
             assistant_aggregator,
         ]
     )
+    backend = BackendClient()
+    call = {"id": None, "idx": 0}  # set when the client connects
+
+    async def upload_turn(observer: TimingObserver, turn: TurnTimes):
+        # Timings describe the assistant's answer to the caller's turn, so one row per exchange, role=assistant.
+        idx, call["idx"] = call["idx"], call["idx"] + 1
+        await backend.add_turn(
+            call["id"],
+            {
+                "idx": idx,
+                "role": "assistant",
+                "interrupted": turn.interrupted,
+                **{
+                    f: (
+                        w.isoformat()
+                        if (w := observer.wall_clock(getattr(turn, f)))
+                        else None
+                    )
+                    for f in (
+                        "t_user_stop",
+                        "t_stt_final",
+                        "t_llm_first_token",
+                        "t_tts_first_byte",
+                    )
+                },
+            },
+        )
+
     worker = PipelineWorker(
         pipeline,
         params=PipelineParams(enable_metrics=True, enable_usage_metrics=True),
-        observers=[TimingObserver()],
+        observers=[TimingObserver(on_turn=upload_turn)],
     )
 
     @assistant_aggregator.event_handler("on_assistant_turn_stopped")
@@ -127,6 +156,7 @@ async def bot(runner_args: RunnerArguments):
 
     @transport.event_handler("on_client_connected")
     async def on_connected(transport, client):
+        call["id"] = await backend.start_call()
         context.add_message(
             {
                 "role": "developer",
@@ -137,6 +167,7 @@ async def bot(runner_args: RunnerArguments):
 
     @transport.event_handler("on_client_disconnected")
     async def on_disconnected(transport, client):
+        await backend.end_call(call["id"])
         await worker.cancel()
 
     runner = WorkerRunner(handle_sigint=runner_args.handle_sigint)
