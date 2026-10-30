@@ -121,5 +121,5 @@ def test_on_turn_callback_gets_turn_and_wall_clock_keeps_differences():
         await asyncio.gather(*obs._tasks)
 
     asyncio.run(go())
-    ((turn, stop, first_byte),) = seen
+    ((_turn, stop, first_byte),) = seen
     assert (first_byte - stop).total_seconds() == 0.9
