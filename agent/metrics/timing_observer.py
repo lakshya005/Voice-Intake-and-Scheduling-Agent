@@ -63,17 +63,12 @@ class TimingObserver(BaseObserver):
         frame, t, cur = data.frame, data.timestamp, self._current
         if self._anchor is None:
             self._anchor = (t, time.time_ns())
-        if (
-            "Transcri" in type(frame).__name__
-        ):  # TEMP: find out why stt_final stays empty
-            logger.debug(
-                f"SEEN {type(frame).__name__} t={t} user_stop={cur.t_user_stop} llm={cur.t_llm_first_token}"
-            )
-
         if isinstance(frame, UserStoppedSpeakingFrame):
+            if cur.t_user_stop is not None and cur.t_llm_first_token is None:
+                return  # Flux emits a second stop frame per turn; it must not reset the turn or wipe stt_final
             if (
                 cur.t_user_stop is not None
-            ):  # previous turn never finished: drop it, keep nothing stale
+            ):  # a new turn began while the previous one was still being answered
                 self._current = cur = TurnTimes()
             cur.t_user_stop = t
         elif isinstance(frame, TranscriptionFrame):

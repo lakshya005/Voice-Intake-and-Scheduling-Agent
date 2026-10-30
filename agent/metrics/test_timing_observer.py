@@ -123,3 +123,17 @@ def test_on_turn_callback_gets_turn_and_wall_clock_keeps_differences():
     asyncio.run(go())
     ((_turn, stop, first_byte),) = seen
     assert (first_byte - stop).total_seconds() == 0.9
+
+
+def test_duplicate_user_stop_keeps_first_stop_and_stt_final():
+    (turn,) = run(
+        [
+            (50, stt(0)),
+            (100, UserStoppedSpeakingFrame()),
+            (120, UserStoppedSpeakingFrame()),  # a second stop frame for the same turn
+            (300, LLMTextFrame("a")),
+            (700, audio()),
+            (900, BotStoppedSpeakingFrame()),
+        ]
+    )
+    assert (turn.t_user_stop, turn.t_stt_final) == (100, 50)
