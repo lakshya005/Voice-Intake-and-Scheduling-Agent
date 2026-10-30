@@ -59,6 +59,27 @@ def test_verify_lockout_after_three_wrong_attempts(client, make_call, patient):
     assert client.post("/tools/verify_patient", json={"call_id": call_id, **patient}).json()["verified"] is False
 
 
+def test_find_slots_filters_by_time_of_day(client, make_call):
+    call_id = make_call()
+    body = {"call_id": call_id, "time_from": "12:00:00"}
+    afternoon = client.post("/tools/find_slots", json=body).json()["slots"]
+    morning = client.post("/tools/find_slots", json={"call_id": call_id, "time_to": "12:00:00"}).json()["slots"]
+    assert afternoon and morning
+    with psycopg.connect(DATABASE_URL) as conn:
+
+        def hours(ids):
+            return [
+                conn.execute(
+                    "SELECT extract(hour FROM start_time AT TIME ZONE 'America/New_York') FROM slots WHERE id = %s",
+                    (i,),
+                ).fetchone()[0]
+                for i in ids
+            ]
+
+        assert all(h >= 12 for h in hours(s["slot_id"] for s in afternoon))
+        assert all(h < 12 for h in hours(s["slot_id"] for s in morning))
+
+
 def test_booking_requires_verification(client, make_call):
     call_id = make_call()
     slot_id = first_slot(client, call_id)

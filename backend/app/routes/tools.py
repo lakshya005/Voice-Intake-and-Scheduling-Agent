@@ -3,6 +3,7 @@ booking) is enforced here, never in the prompt. Every call is audited in tool_ca
 
 import time
 from datetime import date
+from datetime import time as clock
 
 from fastapi import APIRouter, Depends, HTTPException
 from psycopg.errors import UniqueViolation
@@ -82,6 +83,8 @@ class FindSlotsIn(BaseModel):
     visit_type: str | None = None
     date_from: date | None = None
     date_to: date | None = None
+    time_from: clock | None = None  # clinic-local time of day, e.g. 12:00 for afternoons
+    time_to: clock | None = None
     provider_id: int | None = None
 
 
@@ -98,6 +101,8 @@ async def find_slots(body: FindSlotsIn, conn=Depends(get_conn)):
               AND (%(df)s::date IS NULL OR s.start_time >= (%(df)s::date)::timestamp AT TIME ZONE 'America/New_York')
               AND (%(dt)s::date IS NULL
                    OR s.start_time < ((%(dt)s::date) + 1)::timestamp AT TIME ZONE 'America/New_York')
+              AND (%(tf)s::time IS NULL OR (s.start_time AT TIME ZONE 'America/New_York')::time >= %(tf)s::time)
+              AND (%(tt)s::time IS NULL OR (s.start_time AT TIME ZONE 'America/New_York')::time < %(tt)s::time)
               AND NOT EXISTS (SELECT 1 FROM appointments a WHERE a.slot_id = s.id)
               AND NOT EXISTS (SELECT 1 FROM holds h
                               WHERE h.slot_id = s.id AND h.status = 'active' AND h.expires_at > now())
@@ -108,6 +113,8 @@ async def find_slots(body: FindSlotsIn, conn=Depends(get_conn)):
                 "pid": body.provider_id,
                 "df": body.date_from,
                 "dt": body.date_to,
+                "tf": body.time_from,
+                "tt": body.time_to,
             },
         )
         return {

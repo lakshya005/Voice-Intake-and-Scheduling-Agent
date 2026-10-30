@@ -179,6 +179,9 @@ async def bot(runner_args: RunnerArguments):
     runner = WorkerRunner(handle_sigint=runner_args.handle_sigint)
     await runner.add_workers(worker)
     await runner.run()
+    await backend.end_call(
+        call["id"]
+    )  # a flow that ends the call itself never fires on_client_disconnected
 
 
 if __name__ == "__main__":

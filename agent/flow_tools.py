@@ -102,18 +102,24 @@ async def record_reason(flow_manager: FlowManager, reason: str, visit_type: str)
 
 
 async def find_slots(
-    flow_manager: FlowManager, date_from: str | None = None, date_to: str | None = None
+    flow_manager: FlowManager,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    time_from: str | None = None,
+    time_to: str | None = None,
 ):
     """Find up to three open appointment times.
 
     Args:
         date_from (str | None): Earliest date to consider, YYYY-MM-DD.
         date_to (str | None): Latest date to consider, YYYY-MM-DD.
+        time_from (str | None): Earliest start time, 24-hour HH:MM. Afternoon starts at 12:00.
+        time_to (str | None): Start must be before this time, 24-hour HH:MM. Morning ends at 12:00.
     """
     backend, call_id = _call(flow_manager)
     r = await backend.tool(
         "find_slots", call_id=call_id, visit_type=flow_manager.state.get("visit_type"),
-        date_from=date_from, date_to=date_to,
+        date_from=date_from, date_to=date_to, time_from=time_from, time_to=time_to,
     )  # fmt: skip
     if "error" in r:
         return {
