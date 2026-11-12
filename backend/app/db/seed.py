@@ -1,4 +1,4 @@
-"""Load synthetic data: 50 patients, 3 providers, 2 weeks of slots, past visits.
+"""Load synthetic data: 50 patients, 3 providers, 4 weeks of slots, past visits.
 
 Run from backend/:  uv run python -m app.db.seed
 Deterministic (fixed seed) and re-runnable: it wipes the tables first.
@@ -31,7 +31,7 @@ VISIT_REASONS = [
     "medication refill",
 ]
 SLOT_MINUTES = 30
-DAYS_AHEAD = 14
+DAYS_AHEAD = 28
 
 fake = Faker("en_US")
 Faker.seed(42)
@@ -43,7 +43,7 @@ def make_patients() -> list[tuple]:
     rows = []
     while len(rows) < N_PATIENTS:
         first, last = fake.first_name(), fake.last_name()
-        dob = fake.date_of_birth(minimum_age=18, maximum_age=90)
+        dob = fake.date_between(date(1936, 1, 1), date(2007, 12, 31))  # fixed range: date_of_birth() depends on today
         key = (first.lower(), last.lower(), dob)
         if key in seen:  # patients_identity_uq would reject it
             continue
