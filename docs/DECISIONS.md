@@ -36,3 +36,15 @@ Each entry: context, options, choice, why.
 - **Observed:** three interrupted turns stored `content=''`. Kokoro gives no word timestamps, so Pipecat adds a sentence to the context only after its audio finishes generating (documented in `TTSService._push_spoken_text`). A sentence interrupted midway is dropped entirely.
 - **Consequence:** safe direction (never stores unheard words) but lossy: the agent forgot its own partial answer and repeated it. Mitigation: short sentences in the prompt. A TTS with word timestamps would give word-level truncation.
 - **Also observed:** Flux transcribed "wait, stop" as "which top", "weird stop", "weed stop"; the junk then triggered new replies.
+
+## 7. Conversation flow: Pipecat Flows state machine, not one big prompt
+- **Context:** M2 needs a booking dialogue where wrong steps (booking before verifying, offering unreturned slots) are impossible, not just discouraged.
+- **Options:** (A) one system prompt plus tools; (B) Pipecat Flows, a YAML state machine where the config decides transitions and tools return a `status` the config branches on.
+- **Choice:** B. The LLM only talks and calls tools; the backend enforces the rules (verification gate, holds, unique constraints). Emergency and handoff nodes are scripted, with no LLM improvisation.
+- **Cost:** the LLM still decides *when* to call a tool, so it can skip one. The evals caught it saying "someone will be with you" on a failed verification without calling `escalate_to_staff`.
+
+## 8. Evals: scripted callers first, LLM-played callers later
+- **Context:** M3 needs repeatable tests of the real bot. Groq's available models made poor simulated callers: gpt-oss wrote the bot's lines and hung up early, and the smaller models hit rate limits.
+- **Choice:** Pipecat Evals with scripted caller turns (text modality, real flow, real tools, real backend), plus a commitment ledger (`agent/evals/ledger.py`) that checks what the bot promised against Postgres.
+- **Found by the evals:** early self-escalation after two wrong birthdays, hanging up on a medical-advice question, a staff promise with no handoff filed, and silent calls when the LLM provider returns 429.
+- **Limit:** Groq's free tier allows 8,000 tokens per minute on gpt-oss-120b, about one scenario per minute, so a full run is slow and can flake. LLM-played personas (angry, rambling) are still to do.
