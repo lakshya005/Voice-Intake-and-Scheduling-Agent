@@ -15,6 +15,7 @@ from dotenv import load_dotenv
 from loguru import logger
 from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnalyzerV3
 from pipecat.audio.vad.silero import SileroVADAnalyzer
+from pipecat.evals.transport import EvalTransportParams
 from pipecat.flows import Flow, FlowConfig, FlowManager
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.worker import PipelineParams, PipelineWorker
@@ -23,6 +24,7 @@ from pipecat.processors.aggregators.llm_response_universal import (
     LLMContextAggregatorPair,
     LLMUserAggregatorParams,
 )
+from pipecat.processors.frameworks.rtvi import RTVIObserver, RTVIProcessor
 from pipecat.runner.types import RunnerArguments
 from pipecat.runner.utils import create_transport
 from pipecat.services.deepgram.flux.stt import DeepgramFluxSTTService
@@ -61,6 +63,9 @@ async def speak_naturally(text: str, text_type: str) -> str:
 
 transport_params = {
     "webrtc": lambda: TransportParams(audio_in_enabled=True, audio_out_enabled=True),
+    "eval": lambda: EvalTransportParams(
+        audio_in_enabled=True
+    ),  # the eval harness connects here
 }
 
 
@@ -98,9 +103,11 @@ async def bot(runner_args: RunnerArguments):
     context_aggregator = LLMContextAggregatorPair(context, user_params=user_params)
     user_aggregator, assistant_aggregator = context_aggregator
 
+    rtvi = RTVIProcessor()
     pipeline = Pipeline(
         [
             transport.input(),
+            rtvi,  # the eval harness talks RTVI
             stt,
             user_aggregator,
             llm,
@@ -137,10 +144,20 @@ async def bot(runner_args: RunnerArguments):
             },
         )
 
+    async def save_text(role: str, text: str | None, interrupted: bool = False):
+        # shortcut: stored as spoken, unmasked; add the redaction pass here (single write point) in M4
+        if not text:  # tool-call-only turns have no text
+            return
+        idx, call["idx"] = call["idx"], call["idx"] + 1
+        await backend.add_turn(
+            call["id"],
+            {"idx": idx, "role": role, "text": text, "interrupted": interrupted},
+        )
+
     worker = PipelineWorker(
         pipeline,
         params=PipelineParams(enable_metrics=True, enable_usage_metrics=True),
-        observers=[TimingObserver(on_turn=upload_turn)],
+        observers=[TimingObserver(on_turn=upload_turn), RTVIObserver(rtvi)],
     )
 
     flow = Flow(
@@ -160,6 +177,11 @@ async def bot(runner_args: RunnerArguments):
         logger.info(
             f"ASSISTANT TURN interrupted={message.interrupted} content={message.content!r}"
         )
+        await save_text("assistant", message.content, message.interrupted)
+
+    @user_aggregator.event_handler("on_user_turn_stopped")
+    async def save_user_turn(aggregator, strategy, message):
+        await save_text("user", message.content)
 
     @transport.event_handler("on_client_connected")
     async def on_connected(transport, client):

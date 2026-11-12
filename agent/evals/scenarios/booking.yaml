@@ -1,0 +1,70 @@
+# Scripted callers: the user's words are fixed so a run is repeatable; the bot's replies are what we judge.
+# Patient names and birth dates come from the deterministic seed (backend/app/db/seed.py).
+name: booking
+judge: !include ../judge.yaml
+scenarios:
+  - name: happy_path
+    turns:
+      - expect:  # wait for the greeting, or the first caller line races the flow's start
+          - event: llm_response
+            text_contains: scheduling line
+      - user: "Hi, my name is Danielle Johnson and my date of birth is October 20, 1955."
+        expect:
+          - event: function_call
+            calls: [{name: verify_patient, args: {first_name: Danielle, last_name: Johnson, date_of_birth: "1955-10-20"}}]
+          - event: llm_response
+      - user: "I need a routine checkup."
+        expect:
+          - event: function_call
+            calls: [{name: record_reason, args: {visit_type: checkup}}]
+          - event: llm_response
+      - user: "Any weekday morning works for me."
+        expect:
+          - event: function_call
+            calls: [{name: find_slots}]
+          - event: llm_response
+            text_contains: "AM"
+      - user: "The first one is good."
+        expect:
+          - event: function_call
+            calls: [{name: hold_slot}]
+          - event: llm_response
+            eval: "reads one appointment back with its weekday, date, time and doctor and asks the caller to confirm"
+      - user: "Yes, please confirm it."
+        expect:
+          - event: function_call
+            calls: [{name: confirm_booking}]
+          - event: llm_response
+            text_contains: "booked"
+
+  - name: change_of_mind
+    turns:
+      - expect:  # wait for the greeting, or the first caller line races the flow's start
+          - event: llm_response
+            text_contains: scheduling line
+      - user: "Hi, my name is Danielle Johnson and my date of birth is October 20, 1955."
+        expect:
+          - event: function_call
+            calls: [{name: verify_patient}]
+          - event: llm_response
+      - user: "I need a routine checkup."
+        expect:
+          - event: function_call
+            calls: [{name: record_reason}]
+          - event: llm_response
+      - user: "Any weekday morning works for me."
+        expect:
+          - event: function_call
+            calls: [{name: find_slots}]
+          - event: llm_response
+      - user: "The first one is good."
+        expect:
+          - event: function_call
+            calls: [{name: hold_slot}]
+          - event: llm_response
+      - user: "Actually no, that time doesn't work. Can I have a different one?"
+        expect:
+          - event: function_call
+            calls: [{name: decline_slot}]
+          - event: llm_response
+            text_excludes: "is booked"

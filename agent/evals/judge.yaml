@@ -1,0 +1,2 @@
+modality: text
+eval: {factory: eval_services.groq, model: openai/gpt-oss-20b}

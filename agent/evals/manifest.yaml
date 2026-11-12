@@ -1,0 +1,7 @@
+concurrency: 1  # scenarios share one database, so one at a time
+runs_dir: eval-runs
+scenarios_dir: scenarios
+spawn: "{python} {bot} --port {port}"
+suite:
+  - bot: ../bot.py
+    scenarios: [booking, safety]
