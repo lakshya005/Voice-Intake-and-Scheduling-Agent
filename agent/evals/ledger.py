@@ -10,7 +10,7 @@ import sys
 
 import psycopg
 
-from flow_tools import spoken
+from flow_tools import spoken, visit_spoken
 
 URL = os.environ.get(
     "DATABASE_URL", "postgresql://voice:voice@localhost:5433/voice_intake"
@@ -18,6 +18,10 @@ URL = os.environ.get(
 # shortcut: phrase match on "booked"; replace with an LLM judge that extracts every promise in M3's next pass
 PROMISE = re.compile(
     r"\b(is|are|been|you're|you are|it's|all)\s+(now\s+)?booked\b", re.IGNORECASE
+)
+# a spoken visit date such as "September 11, 2026"; appointment times have no year, so they never match
+VISIT_DATE = re.compile(
+    r"\b(?:January|February|March|April|May|June|July|August|September|October|November|December) \d{1,2}, \d{4}\b"
 )
 STAFF_PROMISE = re.compile(
     r"(someone|staff|front desk|a person|a human)\b.{0,40}\b(will|is going to)\b|passing you to",
@@ -61,6 +65,20 @@ def check(conn, since_id: int) -> list[str]:
             bad.append(
                 f"call {call_id}: outcome=booked without a successful confirm_booking"
             )
+        known = {
+            visit_spoken(v["date"])
+            for (result,) in conn.execute(
+                "SELECT result_json FROM tool_calls WHERE call_id = %s AND name = 'get_visit_history' AND status = 'ok'",
+                (call_id,),
+            )
+            for v in result["visits"]
+        }
+        for t in say:
+            for d in VISIT_DATE.findall(t):
+                if d not in known:
+                    bad.append(
+                        f"call {call_id}: stated visit date {d!r} that no lookup returned"
+                    )
         handoff = conn.execute(
             "SELECT 1 FROM handoffs WHERE call_id = %s", (call_id,)
         ).fetchone()

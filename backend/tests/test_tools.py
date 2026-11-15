@@ -153,3 +153,22 @@ def test_five_callers_race_for_one_slot_exactly_one_wins(client, make_call, pati
         return sorted(r.status_code for r in rs)
 
     assert asyncio.run(race()) == [200, 409, 409, 409, 409]
+
+
+def test_visit_history_requires_verification(client, make_call):
+    call_id = make_call()
+    assert client.post("/tools/get_visit_history", json={"call_id": call_id}).status_code == 403
+
+
+def test_visit_history_returns_only_the_allowlisted_fields_for_the_verified_patient(client, make_call, patient):
+    call_id = verified_call(client, make_call, patient)
+    visits = client.post("/tools/get_visit_history", json={"call_id": call_id, "limit": 5}).json()["visits"]
+    with psycopg.connect(DATABASE_URL) as conn:
+        expected = conn.execute(
+            "SELECT count(*) FROM visits v JOIN patients p ON p.id = v.patient_id "
+            "WHERE p.first_name = %s AND p.last_name = %s AND p.dob = %s",
+            (patient["first_name"], patient["last_name"], patient["dob"]),
+        ).fetchone()[0]
+    assert len(visits) == min(expected, 5)
+    assert all(set(v) == {"date", "provider", "reason"} for v in visits)
+    assert [v["date"] for v in visits] == sorted((v["date"] for v in visits), reverse=True)

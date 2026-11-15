@@ -4,4 +4,4 @@ scenarios_dir: scenarios
 spawn: "{python} {bot} --port {port}"
 suite:
   - bot: ../bot.py
-    scenarios: [booking, safety]
+    scenarios: [booking, safety, lookup]

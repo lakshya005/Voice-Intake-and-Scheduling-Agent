@@ -8,7 +8,7 @@ from datetime import time as clock
 from fastapi import APIRouter, Depends, HTTPException
 from psycopg.errors import UniqueViolation
 from psycopg.types.json import Jsonb
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.db.conn import get_conn
 
@@ -264,3 +264,24 @@ async def escalate(body: EscalateIn, conn=Depends(get_conn)):
         return {"handoff_id": (await cur.fetchone())[0]}
 
     return await audited(conn, body.call_id, "escalate", {"reason": body.reason}, run)
+
+
+class VisitsIn(BaseModel):
+    call_id: int
+    limit: int = Field(default=1, ge=1, le=5)
+
+
+@router.post("/get_visit_history")
+async def get_visit_history(body: VisitsIn, conn=Depends(get_conn)):
+    """Past visits of the verified caller, newest first. Allowlist: date, provider, reason. No notes."""
+
+    async def run(pid):
+        require_verified(pid)
+        cur = await conn.execute(
+            "SELECT v.visit_date, p.name, v.reason FROM visits v JOIN providers p ON p.id = v.provider_id "
+            "WHERE v.patient_id = %s ORDER BY v.visit_date DESC, v.id DESC LIMIT %s",
+            (pid, body.limit),
+        )
+        return {"visits": [{"date": r[0].isoformat(), "provider": r[1], "reason": r[2]} for r in await cur.fetchall()]}
+
+    return await audited(conn, body.call_id, "get_visit_history", body.model_dump(mode="json"), run)

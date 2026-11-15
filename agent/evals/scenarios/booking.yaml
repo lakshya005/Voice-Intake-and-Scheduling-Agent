@@ -13,6 +13,11 @@ scenarios:
           - event: function_call
             calls: [{name: verify_patient, args: {first_name: Danielle, last_name: Johnson, date_of_birth: "1955-10-20"}}]
           - event: llm_response
+      - user: "I'd like to book an appointment."
+        expect:
+          - event: function_call
+            calls: [{name: start_booking}]
+          - event: llm_response
       - user: "I need a routine checkup."
         expect:
           - event: function_call
@@ -46,6 +51,11 @@ scenarios:
         expect:
           - event: function_call
             calls: [{name: verify_patient}]
+          - event: llm_response
+      - user: "I'd like to book an appointment."
+        expect:
+          - event: function_call
+            calls: [{name: start_booking}]
           - event: llm_response
       - user: "I need a routine checkup."
         expect:

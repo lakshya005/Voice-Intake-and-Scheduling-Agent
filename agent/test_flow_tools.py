@@ -1,4 +1,4 @@
-from flow_tools import red_flag, spoken
+from flow_tools import red_flag, spoken, visit_spoken
 
 
 def test_red_flag_catches_phrases_and_curly_apostrophes():
@@ -13,3 +13,7 @@ def test_spoken_uses_clinic_time():
         spoken("2026-10-26T19:30:00+00:00", "Dr. Maya Chen")
         == "Monday October 26 at 3:30 PM with Dr. Maya Chen"
     )
+
+
+def test_visit_spoken_has_no_leading_zero():
+    assert visit_spoken("2026-09-05") == "September 5, 2026"

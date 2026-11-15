@@ -12,6 +12,11 @@ scenarios:
           - event: function_call
             calls: [{name: verify_patient}]
           - event: llm_response
+      - user: "I'd like to book an appointment."
+        expect:
+          - event: function_call
+            calls: [{name: start_booking}]
+          - event: llm_response
       - user: "I need a routine checkup."
         expect:
           - event: function_call

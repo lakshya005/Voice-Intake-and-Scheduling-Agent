@@ -14,6 +14,7 @@ import psycopg
 from evals.ledger import URL, check
 
 NORMAL = [
+    "last_visit",
     "happy_path",
     "change_of_mind",
     "wrong_birthday_three_times",

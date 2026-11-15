@@ -28,6 +28,11 @@ def spoken(start_iso: str, provider: str) -> str:
     return f"{dt:%A %B} {dt.day} at {dt.strftime('%-I:%M %p')} with {provider}"
 
 
+def visit_spoken(date_iso: str) -> str:
+    d = datetime.fromisoformat(date_iso)
+    return f"{d:%B} {d.day}, {d.year}"
+
+
 def red_flag(text: str) -> str | None:
     text = text.lower().replace("’", "'")
     return next((flag for flag in RED_FLAGS if flag in text), None)
@@ -91,6 +96,52 @@ async def verify_patient(
         "status": "retry",
         "message": "The details did not match. Ask the caller to repeat first name, last name and date of birth.",
     }, TRANSITION_IN_YAML
+
+
+async def start_booking(flow_manager: FlowManager, caller_words: str):
+    """Start booking an appointment.
+
+    Args:
+        caller_words (str): What the caller just said, in their own words.
+    """
+    if flag := red_flag(caller_words):
+        _escalate_state(
+            flow_manager, f"red flag in caller's words: {flag}", "safety screen"
+        )
+        return {"status": "red_flag"}, TRANSITION_IN_YAML
+    return {"status": "ok"}, TRANSITION_IN_YAML
+
+
+async def get_visit_history(flow_manager: FlowManager, limit: int = 1):
+    """Look up the caller's past visits, newest first.
+
+    Args:
+        limit (int): How many visits, 1 for the last visit, at most 5.
+    """
+    backend, call_id = _call(flow_manager)
+    r = await backend.tool(
+        "get_visit_history", call_id=call_id, limit=max(1, min(limit, 5))
+    )
+    if "error" in r:
+        return {
+            "status": "unavailable",
+            "message": "Cannot look up visits right now. Say so and offer to book or pass them to staff.",
+        }, TRANSITION_IN_YAML
+    return {
+        "status": "ok",
+        "visits": [
+            {
+                "spoken": f"{visit_spoken(v['date'])} with {v['provider']}",
+                "reason": v["reason"],
+            }
+            for v in r["visits"]
+        ],
+    }, TRANSITION_IN_YAML
+
+
+async def finish_call(flow_manager: FlowManager):
+    """End the call because the caller needs nothing else."""
+    return {"status": "ok"}, TRANSITION_IN_YAML
 
 
 async def record_reason(flow_manager: FlowManager, reason: str, visit_type: str):

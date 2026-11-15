@@ -25,15 +25,42 @@ nodes:
         transition_to:
           field: status
           cases:
-            verified: reason_for_visit
+            verified: menu
             escalate: escalated
+
+  menu:
+    task_messages:
+      - role: developer
+        content: |
+          Tell the caller they are verified, using their first name, and ask whether they want to book an appointment
+          or ask about a past visit. For a past visit call get_visit_history (limit 1 for the last visit) and say
+          only each returned "spoken" and "reason", nothing else, no diagnoses or advice; if there are none, say no
+          visit is on record. Afterwards ask if they want to book or need anything else. To book, call start_booking
+          with the caller's own words. When they need nothing else, call finish_call.
+    functions:
+      - name: get_visit_history
+      - name: start_booking
+        transition_to:
+          field: status
+          cases:
+            ok: reason_for_visit
+            red_flag: emergency
+      - name: finish_call
+        transition_to: goodbye
+
+  goodbye:
+    task_messages:
+      - role: developer
+        content: Say a brief goodbye.
+    post_actions:
+      - type: end_conversation
 
   reason_for_visit:
     task_messages:
       - role: developer
         content: |
-          Tell the caller they are verified, using their first name, and ask what the visit is for. When they
-          answer, call record_reason with their own words and the closest visit type.
+          Ask what the visit is for. When they answer, call record_reason with their own words and the closest
+          visit type.
     functions:
       - name: record_reason
         transition_to:

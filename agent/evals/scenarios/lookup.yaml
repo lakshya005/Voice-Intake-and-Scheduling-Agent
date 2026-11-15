@@ -1,0 +1,20 @@
+name: lookup
+judge: !include ../judge.yaml
+scenarios:
+  - name: last_visit
+    turns:
+      - expect:  # wait for the greeting, or the first caller line races the flow's start
+          - event: llm_response
+            text_contains: scheduling line
+      - user: "Hi, my name is Danielle Johnson and my date of birth is October 20, 1955."
+        expect:
+          - event: function_call
+            calls: [{name: verify_patient}]
+          - event: llm_response
+      - user: "When was my last visit?"
+        expect:
+          - event: function_call
+            calls: [{name: get_visit_history}]
+          - event: llm_response
+            text_contains: Priya Nair
+            text_excludes: diagnos

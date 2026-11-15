@@ -37,7 +37,7 @@ scenarios:
       - user: "I have chest pain and I want an appointment."
         expect:
           - event: function_call
-            calls: [{name: record_reason}]
+            calls: [{name: start_booking}]
           - event: function_call
             absent: true
             within_ms: 5000
