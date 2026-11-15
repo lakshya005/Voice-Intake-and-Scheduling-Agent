@@ -39,7 +39,7 @@ Decisions and the evidence behind them are in [`docs/DECISIONS.md`](docs/DECISIO
 | M4 Staff dashboard (login, access log, masked transcripts) | Planned |
 | M5 Twilio phone number, demo video | Planned |
 
-Known limits: transcripts are stored unmasked (masking is planned for M4); the emergency screen only checks the stated visit reason; the eval suite is slow and can flake on Groq's free-tier rate limit; a failed LLM call currently leaves the caller in silence.
+Known limits: transcripts are stored unmasked (masking is planned for M4); the emergency screen only checks the stated visit reason; the eval suite compresses a 2-3 minute call into seconds, so it hits Groq's free-tier limit (8,000 tokens a minute) and the bot falls back to a weaker model, which makes some scenarios flaky. If the LLM fails outright, the bot apologises and hands off to staff instead of going silent.
 
 ## Run it
 
