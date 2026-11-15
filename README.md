@@ -34,8 +34,8 @@ Decisions and the evidence behind them are in [`docs/DECISIONS.md`](docs/DECISIO
 |---|---|
 | M1 Voice loop, latency timing | Done |
 | M2 Booking tools, Flows state machine, correctness tests | Done |
-| M2.5 Read-only patient record lookup | Planned |
-| M3 Eval harness | In progress: 6 scripted scenarios plus the commitment ledger. LLM-played callers and CI still to do |
+| M2.5 Read-only last-visit lookup (verified callers only, date, doctor and reason) | Done |
+| M3 Eval harness | In progress: 6 scripted scenarios plus the commitment ledger. failure drill, paced runner. LLM-played callers still to do. GitHub Actions runs lint and unit tests on every push and PR (not the evals, which need API keys) |
 | M4 Staff dashboard (login, access log, masked transcripts) | Planned |
 | M5 Twilio phone number, demo video | Planned |
 
