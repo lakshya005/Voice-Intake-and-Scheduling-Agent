@@ -1,0 +1,22 @@
+# Failure drill: each entry breaks one dependency on purpose (the bot reads runner_body.faults).
+concurrency: 1
+runs_dir: eval-runs
+scenarios_dir: scenarios
+spawn: "{python} {bot} --port {port}"
+suite:
+  - bot: ../bot.py
+    name: faults/find_slots
+    runner_body: {data: {faults: [find_slots]}}
+    scenarios: [fault_find_slots_down]
+  - bot: ../bot.py
+    name: faults/hold_slot
+    runner_body: {data: {faults: [hold_slot]}}
+    scenarios: [fault_hold_slot_down]
+  - bot: ../bot.py
+    name: faults/verify_patient
+    runner_body: {data: {faults: [verify_patient]}}
+    scenarios: [fault_verify_down]
+  - bot: ../bot.py
+    name: faults/llm
+    runner_body: {data: {faults: [llm]}}
+    scenarios: [fault_llm_down]

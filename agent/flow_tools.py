@@ -1,13 +1,17 @@
 """Handlers behind flow.yaml. Each tool calls the backend, which enforces the rules; the tool only reshapes the
 result for the LLM and sets a "status" the YAML branches on."""
 
+import asyncio
+import json
 import uuid
 from datetime import datetime
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from loguru import logger
 from pipecat.flows import TRANSITION_IN_YAML, FlowManager
 
+UNSENT_HANDOFFS = Path(__file__).with_name("unsent_handoffs.jsonl")
 CLINIC_TZ = ZoneInfo("America/New_York")
 VISIT_TYPES = {"checkup", "follow_up", "sick_visit"}
 # shortcut: substring match on the stated reason only, not on the whole call; add a transcript-level screen in M3
@@ -27,6 +31,11 @@ def spoken(start_iso: str, provider: str) -> str:
 def red_flag(text: str) -> str | None:
     text = text.lower().replace("’", "'")
     return next((flag for flag in RED_FLAGS if flag in text), None)
+
+
+def _append(path: Path, line: str):
+    with open(path, "a") as f:
+        f.write(line)
 
 
 def _call(fm: FlowManager):
@@ -91,6 +100,11 @@ async def record_reason(flow_manager: FlowManager, reason: str, visit_type: str)
         reason (str): The caller's reason for the visit, in their own words.
         visit_type (str): The closest of: checkup, follow_up, sick_visit.
     """
+    if not reason.strip():  # the model chained this call before the caller answered
+        return {
+            "status": "retry",
+            "message": "The caller has not said why they are calling. Ask them.",
+        }, TRANSITION_IN_YAML
     if flag := red_flag(reason):
         _escalate_state(
             flow_manager, f"red flag in stated reason: {flag}", "safety screen"
@@ -122,10 +136,8 @@ async def find_slots(
         date_from=date_from, date_to=date_to, time_from=time_from, time_to=time_to,
     )  # fmt: skip
     if "error" in r:
-        return {
-            "status": "unavailable",
-            "message": "Cannot check the calendar right now. Offer to pass them to staff.",
-        }, TRANSITION_IN_YAML
+        _escalate_state(flow_manager, "scheduling system unavailable", "slot search")
+        return {"status": "escalate"}, TRANSITION_IN_YAML
     offered = {s["slot_id"]: spoken(s["start_time"], s["provider"]) for s in r["slots"]}
     flow_manager.state["offered"] = offered
     return {
@@ -150,6 +162,11 @@ async def hold_slot(flow_manager: FlowManager, slot_id: int):
         }, TRANSITION_IN_YAML
     backend, call_id = _call(flow_manager)
     r = await backend.tool("hold_slot", call_id=call_id, slot_id=slot_id)
+    if (
+        r.get("error") == "unavailable"
+    ):  # an outage, not a taken slot: don't tell the caller it was taken
+        _escalate_state(flow_manager, "scheduling system unavailable", "slot hold")
+        return {"status": "escalate"}, TRANSITION_IN_YAML
     if "error" in r:
         return {
             "status": "taken",
@@ -217,3 +234,11 @@ async def file_handoff(action: dict, flow_manager: FlowManager):
     )  # fmt: skip
     if "error" in r:
         logger.error(f"handoff could not be filed for call {call_id}: {r}")
+        # shortcut: a local file staff must read by hand; replace with a retry queue in M4
+        line = (
+            json.dumps(
+                {"call_id": call_id, "reason": reason, "who": s.get("patient_first")}
+            )
+            + "\n"
+        )
+        await asyncio.to_thread(_append, UNSENT_HANDOFFS, line)

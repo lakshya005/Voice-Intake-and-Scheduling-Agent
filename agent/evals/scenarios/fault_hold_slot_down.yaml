@@ -1,0 +1,31 @@
+# Failure drill: the hold endpoint is down after slots were offered. Hand off; do not claim the time was taken or booked.
+name: fault_hold_slot_down
+judge: !include ../judge.yaml
+scenarios:
+  - name: slot_hold_down
+    turns:
+      - expect:  # wait for the greeting, or the first caller line races the flow's start
+          - event: llm_response
+            text_contains: scheduling line
+      - user: "Hi, my name is Danielle Johnson and my date of birth is October 20, 1955."
+        expect:
+          - event: function_call
+            calls: [{name: verify_patient}]
+          - event: llm_response
+      - user: "I need a routine checkup."
+        expect:
+          - event: function_call
+            calls: [{name: record_reason}]
+          - event: llm_response
+      - user: "Any weekday morning works for me."
+        expect:
+          - event: function_call
+            calls: [{name: find_slots}]
+          - event: llm_response
+      - user: "The first one is good."
+        expect:
+          - event: function_call
+            calls: [{name: hold_slot}]
+          - event: function_call
+            absent: true
+            within_ms: 5000

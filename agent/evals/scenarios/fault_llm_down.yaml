@@ -1,0 +1,10 @@
+# Failure drill: the LLM provider fails on every request. The bot must hand off by itself instead of going silent.
+name: fault_llm_down
+judge: !include ../judge.yaml
+scenarios:
+  - name: llm_down
+    turns:
+      - expect:  # no caller line is needed: the greeting itself fails, so just give the handoff time to finish
+          - event: function_call
+            absent: true
+            within_ms: 10000

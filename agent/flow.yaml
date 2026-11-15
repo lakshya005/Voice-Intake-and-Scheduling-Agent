@@ -53,11 +53,16 @@ nodes:
           return. Say nothing is available only if find_slots returned an empty list; then offer to search other days.
     functions:
       - name: find_slots
+        transition_to:
+          field: status
+          cases:
+            escalate: escalated
       - name: hold_slot
         transition_to:
           field: status
           cases:
             held: confirm
+            escalate: escalated
 
   confirm:
     task_messages:

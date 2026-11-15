@@ -65,7 +65,7 @@ Open http://localhost:7860/client/ and press connect.
 ```bash
 cd backend && uv run pytest     # tool endpoints, lockout, idempotency, the five-caller race
 cd agent && uv run pytest       # flow handlers and ledger rules
-cd agent && sh evals/run.sh     # scripted callers against the real bot, then the commitment ledger
+cd agent && uv run python -m evals.run   # scripted callers, failure drill, then the commitment ledger (about 8 minutes: paced for Groq's free tier)
 ```
 
 ## Repo layout

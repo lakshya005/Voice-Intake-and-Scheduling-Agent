@@ -7,7 +7,10 @@ from loguru import logger
 
 
 class BackendClient:
-    def __init__(self):
+    def __init__(self, faults: tuple[str, ...] = ()):
+        self._faults = (
+            faults  # tool names to fail on purpose, for the failure drill in the evals
+        )
         self._http = httpx.AsyncClient(
             base_url=os.getenv("BACKEND_URL", "http://localhost:8000"), timeout=3
         )
@@ -38,6 +41,8 @@ class BackendClient:
 
         A rejection comes back as {"error": detail, "http_status": code}, an outage as {"error": "unavailable"}.
         """
+        if name in self._faults:
+            return {"error": "unavailable"}
         for _ in range(2):
             try:
                 r = await self._http.post(f"/tools/{name}", json=payload)

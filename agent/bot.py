@@ -29,7 +29,6 @@ from pipecat.runner.types import RunnerArguments
 from pipecat.runner.utils import create_transport
 from pipecat.services.deepgram.flux.stt import DeepgramFluxSTTService
 from pipecat.services.deepgram.stt import DeepgramSTTService
-from pipecat.services.groq.llm import GroqLLMService
 from pipecat.services.kokoro.tts import KokoroTTSService
 from pipecat.transports.base_transport import TransportParams
 from pipecat.turns.user_start import (
@@ -47,6 +46,7 @@ from pipecat.workers.runner import WorkerRunner
 import flow_tools
 from backend_client import BackendClient
 from metrics.timing_observer import TimingObserver, TurnTimes
+from resilient_llm import FallbackGroqLLMService
 
 load_dotenv(override=True)
 
@@ -72,7 +72,19 @@ transport_params = {
 async def bot(runner_args: RunnerArguments):
     transport = await create_transport(runner_args, transport_params)
 
-    llm = GroqLLMService(api_key=os.environ["GROQ_API_KEY"])
+    body = runner_args.body if isinstance(runner_args.body, dict) else {}
+    faults = tuple(
+        body.get("faults", ())
+    )  # failure drill: "llm" or tool names to break on purpose
+    primary = os.getenv("LLM_MODEL", "openai/gpt-oss-120b")
+    fallback = os.getenv("LLM_FALLBACK_MODEL", "openai/gpt-oss-20b")
+    if "llm" in faults:
+        primary = fallback = "no-such-model"
+    llm = FallbackGroqLLMService(
+        api_key=os.environ["GROQ_API_KEY"],
+        fallback_model=fallback,
+        settings=FallbackGroqLLMService.Settings(model=primary),
+    )
     tts = KokoroTTSService(
         settings=KokoroTTSService.Settings(voice="af_heart"),
         text_transforms=[("*", speak_naturally)],
@@ -116,7 +128,7 @@ async def bot(runner_args: RunnerArguments):
             assistant_aggregator,
         ]
     )
-    backend = BackendClient()
+    backend = BackendClient(faults)
     call = {"id": None, "idx": 0}  # set when the client connects
 
     async def upload_turn(observer: TimingObserver, turn: TurnTimes):
@@ -170,6 +182,26 @@ async def bot(runner_args: RunnerArguments):
         transport=transport,
         global_functions=flow.global_functions,
     )
+
+    llm_failed = {"handled": False}
+
+    @worker.event_handler("on_pipeline_error")
+    async def on_llm_error(worker, frame):
+        # No LLM answer means silence for the caller: say so, hand off, end the call (once).
+        # shortcut: a Groq tool-validation error (the model called a tool from the previous step) is recoverable
+        # and the next turn works, so only other errors count; replace with a consecutive-error count if it misfires
+        if (
+            frame.processor is not llm
+            or llm_failed["handled"]
+            or "Tool call validation failed" in str(frame.error)
+        ):
+            return
+        llm_failed["handled"] = True
+        flow_manager.state.update(
+            handoff_reason="assistant service error",
+            handoff_attempted=flow_manager.current_node or "n/a",
+        )
+        await flow_manager.set_node_from_config(flow.node("escalated"))
 
     @assistant_aggregator.event_handler("on_assistant_turn_stopped")
     async def log_assistant_turn(aggregator, message):

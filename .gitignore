@@ -7,3 +7,6 @@ node_modules/
 pgdata/
 agent/evals/eval-runs/
 .archify/
+agent/unsent_handoffs.jsonl
+.claude/skills/
+.claude/references/

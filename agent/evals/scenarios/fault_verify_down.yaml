@@ -1,0 +1,16 @@
+# Failure drill: identity verification is down. Hand off; never proceed unverified.
+name: fault_verify_down
+judge: !include ../judge.yaml
+scenarios:
+  - name: verification_down
+    turns:
+      - expect:  # wait for the greeting, or the first caller line races the flow's start
+          - event: llm_response
+            text_contains: scheduling line
+      - user: "Hi, my name is Danielle Johnson and my date of birth is October 20, 1955."
+        expect:
+          - event: function_call
+            calls: [{name: verify_patient}]
+          - event: function_call
+            absent: true
+            within_ms: 5000
