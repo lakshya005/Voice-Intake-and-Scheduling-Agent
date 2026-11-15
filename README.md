@@ -48,7 +48,9 @@ Needs Docker, [uv](https://docs.astral.sh/uv/), a Groq key and a Deepgram key. S
 ```bash
 cp .env.example .env            # then add GROQ_API_KEY and DEEPGRAM_API_KEY
 docker compose up -d postgres
-cd backend && uv run python -m app.db.seed
+cd backend
+docker compose exec -T postgres psql -U voice -d voice_intake < app/db/schema.sql   # once: creates the tables
+uv run python -m app.db.seed
 uv run uvicorn app.main:app --port 8000
 ```
 
