@@ -87,7 +87,7 @@ def test_transcript_is_masked_and_only_an_admin_can_reveal_it(staff_users, call_
 
 
 def test_patient_details_only_after_claiming_and_only_for_the_claimer(staff_users, call_with_handoff):
-    call_id, handoff_id, first, _ = call_with_handoff
+    _, handoff_id, first, _ = call_with_handoff
     a, b = login("t_agent"), login("t_agent2")
     assert a.get(f"/staff/handoffs/{handoff_id}/patient").status_code == 403  # not claimed yet
     assert a.post(f"/staff/handoffs/{handoff_id}/claim").status_code == 200
