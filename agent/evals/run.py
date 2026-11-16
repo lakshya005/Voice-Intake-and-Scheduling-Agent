@@ -37,10 +37,15 @@ def suite(manifest: str, flag: str, value: str) -> bool:
 
 
 def last_handoff(conn) -> str | None:
-    row = conn.execute(
-        "SELECT h.reason FROM calls c LEFT JOIN handoffs h ON h.call_id = c.id ORDER BY c.id DESC LIMIT 1"
-    ).fetchone()
-    return row[0] if row else None
+    # the handoff is filed by an action that runs after the scripted line is spoken, so it can lag the harness
+    for _ in range(15):
+        row = conn.execute(
+            "SELECT h.reason FROM calls c LEFT JOIN handoffs h ON h.call_id = c.id ORDER BY c.id DESC LIMIT 1"
+        ).fetchone()
+        if row and row[0]:
+            return row[0]
+        time.sleep(1)
+    return None
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-from flow_tools import red_flag, spoken, visit_spoken
+from flow_tools import parse_dob, red_flag, spoken, visit_spoken
 
 
 def test_red_flag_catches_phrases_and_curly_apostrophes():
@@ -17,3 +17,20 @@ def test_spoken_uses_clinic_time():
 
 def test_visit_spoken_has_no_leading_zero():
     assert visit_spoken("2026-09-05") == "September 5, 2026"
+
+
+def test_parse_dob_accepts_spoken_and_numeric_styles():
+    for text in (
+        "January 1, 1990",
+        "january 1st 1990",
+        "Jan 1, 1990",
+        "1/1/1990",
+        "1990-01-01",
+        "1 January 1990",
+    ):
+        assert parse_dob(text) == "1990-01-01", text
+
+
+def test_parse_dob_rejects_non_dates():
+    assert parse_dob("February 30, 1990") is None
+    assert parse_dob("nineteen ninety") is None

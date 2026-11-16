@@ -23,6 +23,9 @@ PROMISE = re.compile(
 VISIT_DATE = re.compile(
     r"\b(?:January|February|March|April|May|June|July|August|September|October|November|December) \d{1,2}, \d{4}\b"
 )
+HELD_PROMISE = re.compile(
+    r"\b(?:I['’]ve|I have|is|are|been|now)\s+held\b", re.IGNORECASE
+)
 STAFF_PROMISE = re.compile(
     r"(someone|staff|front desk|a person|a human)\b.{0,40}\b(will|is going to)\b|passing you to",
     re.IGNORECASE,
@@ -79,6 +82,16 @@ def check(conn, since_id: int) -> list[str]:
                     bad.append(
                         f"call {call_id}: stated visit date {d!r} that no lookup returned"
                     )
+        held = conn.execute(
+            "SELECT 1 FROM tool_calls WHERE call_id = %s AND name = 'hold_slot' AND status = 'ok'",
+            (call_id,),
+        ).fetchone()
+        if held is None and (
+            hit := next((t for t in say if HELD_PROMISE.search(t)), None)
+        ):
+            bad.append(
+                f"call {call_id}: said a time is held but hold_slot never succeeded: {hit!r}"
+            )
         handoff = conn.execute(
             "SELECT 1 FROM handoffs WHERE call_id = %s", (call_id,)
         ).fetchone()

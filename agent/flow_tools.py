@@ -3,6 +3,7 @@ result for the LLM and sets a "status" the YAML branches on."""
 
 import asyncio
 import json
+import re
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -26,6 +27,26 @@ RED_FLAGS = (
 def spoken(start_iso: str, provider: str) -> str:
     dt = datetime.fromisoformat(start_iso).astimezone(CLINIC_TZ)
     return f"{dt:%A %B} {dt.day} at {dt.strftime('%-I:%M %p')} with {provider}"
+
+
+_DOB_FORMATS = ("%Y-%m-%d", "%B %d %Y", "%b %d %Y", "%m/%d/%Y", "%d %B %Y")
+
+
+def parse_dob(text: str) -> str | None:
+    """A birth date as the caller said it ("January 1st, 1990", "1/1/1990") to YYYY-MM-DD, or None if not recognised."""
+    cleaned = re.sub(
+        r"(?<=\d)(st|nd|rd|th)\b",
+        "",
+        text.replace(",", " ").strip(),
+        flags=re.IGNORECASE,
+    )
+    cleaned = " ".join(cleaned.split())
+    for fmt in _DOB_FORMATS:
+        try:
+            return datetime.strptime(cleaned, fmt).date().isoformat()
+        except ValueError:
+            continue
+    return None
 
 
 def visit_spoken(date_iso: str) -> str:
@@ -59,7 +80,7 @@ async def verify_patient(
     Args:
         first_name (str): The caller's first name.
         last_name (str): The caller's last name.
-        date_of_birth (str): The caller's date of birth as YYYY-MM-DD.
+        date_of_birth (str): The caller's date of birth, as YYYY-MM-DD or exactly as they said it, like January 1, 1990.
     """
     backend, call_id = _call(flow_manager)
     r = await backend.tool(
@@ -67,7 +88,8 @@ async def verify_patient(
         call_id=call_id,
         first_name=first_name,
         last_name=last_name,
-        dob=date_of_birth,
+        dob=parse_dob(date_of_birth)
+        or date_of_birth,  # the backend rejects what is still not a date
     )
     if r.get("http_status") == 422:
         return {

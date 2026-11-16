@@ -11,7 +11,7 @@ scenarios:
       - user: "Hi, my name is Danielle Johnson and my date of birth is October 20, 1955."
         expect:
           - event: function_call
-            calls: [{name: verify_patient, args: {first_name: Danielle, last_name: Johnson, date_of_birth: "1955-10-20"}}]
+            calls: [{name: verify_patient, args: {first_name: Danielle, last_name: Johnson}}]  # the date format is parsed in code
           - event: llm_response
       - user: "I'd like to book an appointment."
         expect:
