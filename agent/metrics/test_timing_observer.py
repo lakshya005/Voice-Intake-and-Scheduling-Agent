@@ -1,5 +1,6 @@
 import asyncio
 
+import pytest
 from pipecat.frames.frames import (
     BotStoppedSpeakingFrame,
     InterruptionFrame,
@@ -122,7 +123,9 @@ def test_on_turn_callback_gets_turn_and_wall_clock_keeps_differences():
 
     asyncio.run(go())
     ((_turn, stop, first_byte),) = seen
-    assert (first_byte - stop).total_seconds() == 0.9
+    assert (first_byte - stop).total_seconds() == pytest.approx(
+        0.9, abs=1e-4
+    )  # datetime rounds to microseconds
 
 
 def test_duplicate_user_stop_keeps_first_stop_and_stt_final():
