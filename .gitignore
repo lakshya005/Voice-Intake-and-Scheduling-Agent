@@ -10,3 +10,5 @@ agent/evals/eval-runs/
 agent/unsent_handoffs.jsonl
 .claude/skills/
 .claude/references/
+.claude/launch.json
+web/dist/

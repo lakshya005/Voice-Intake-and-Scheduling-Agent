@@ -1,7 +1,7 @@
 -- Voice Intake & Scheduling Agent: schema. Synthetic data only.
 -- Status columns use TEXT + CHECK (not ENUM types) so values are easy to change later.
 
-DROP TABLE IF EXISTS eval_results, eval_runs, handoffs, tool_calls, turns,
+DROP TABLE IF EXISTS access_log, staff_sessions, staff_users, eval_results, eval_runs, handoffs, tool_calls, turns,
     appointments, holds, calls, visits, slots, providers, patients CASCADE;
 
 CREATE TABLE patients (
@@ -100,12 +100,41 @@ CREATE TABLE tool_calls (
 );
 CREATE INDEX tool_calls_call_idx ON tool_calls (call_id);
 
+-- Staff who work the dashboard. Created before handoffs, which record who claimed them.
+CREATE TABLE staff_users (
+    id            BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    username      TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,                              -- scrypt, never the password
+    role          TEXT NOT NULL CHECK (role IN ('admin', 'agent'))
+);
+
+-- Only the hash of the session token is stored, so a database leak does not hand out live sessions.
+CREATE TABLE staff_sessions (
+    token_hash TEXT PRIMARY KEY,
+    staff_id   BIGINT NOT NULL REFERENCES staff_users(id) ON DELETE CASCADE,
+    expires_at TIMESTAMPTZ NOT NULL
+);
+
 CREATE TABLE handoffs (
     id           BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     call_id      BIGINT NOT NULL REFERENCES calls(id),
     reason       TEXT NOT NULL,
     summary_json JSONB NOT NULL,
-    status       TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'claimed', 'closed'))
+    status       TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'claimed', 'closed')),
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    claimed_by   BIGINT REFERENCES staff_users(id),
+    claimed_at   TIMESTAMPTZ,
+    closed_at    TIMESTAMPTZ
+);
+
+-- Who looked at what: opening a call, revealing unmasked text, opening a patient from a handoff.
+CREATE TABLE access_log (
+    id       BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    staff_id BIGINT NOT NULL REFERENCES staff_users(id),
+    action   TEXT NOT NULL,
+    call_id  BIGINT REFERENCES calls(id) ON DELETE SET NULL,
+    at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    detail   JSONB
 );
 
 CREATE TABLE eval_runs (

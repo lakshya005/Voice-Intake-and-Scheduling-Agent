@@ -77,10 +77,14 @@ def make_visits(patient_ids: list[int], provider_ids: list[int]) -> list[tuple]:
     return rows
 
 
+# Demo logins for the dashboard, synthetic project only: change them before putting this anywhere shared.
+STAFF = [("admin", "admin-demo", "admin"), ("frontdesk", "frontdesk-demo", "agent")]
+
+
 def main() -> None:
     with psycopg.connect(DATABASE_URL) as conn, conn.cursor() as cur:
         cur.execute(
-            "TRUNCATE eval_results, eval_runs, handoffs, tool_calls, turns, appointments, "
+            "TRUNCATE access_log, staff_sessions, staff_users, eval_results, eval_runs, handoffs, tool_calls, turns, appointments, "
             "holds, calls, visits, slots, providers, patients RESTART IDENTITY CASCADE"
         )
         cur.executemany(
@@ -99,7 +103,13 @@ def main() -> None:
             "INSERT INTO visits (patient_id, provider_id, visit_date, reason, notes_summary) VALUES (%s, %s, %s, %s, %s)",
             make_visits(patient_ids, provider_ids),
         )
-        for table in ("patients", "providers", "slots", "visits"):
+        from app.staff_auth import hash_password
+
+        cur.executemany(
+            "INSERT INTO staff_users (username, password_hash, role) VALUES (%s, %s, %s)",
+            [(u, hash_password(p), r) for u, p, r in STAFF],
+        )
+        for table in ("patients", "providers", "slots", "visits", "staff_users"):
             cur.execute(f"SELECT count(*) FROM {table}")
             print(f"{table}: {cur.fetchone()[0]}")
 
